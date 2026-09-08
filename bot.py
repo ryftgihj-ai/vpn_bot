@@ -83,31 +83,35 @@ async def create_vpn_key(user_id):
         return None
 
 def main_menu():
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton("🎁 Пробный период", callback_data="trial"),
-        InlineKeyboardButton("💰 Купить VPN", callback_data="buy")
-    )
-    keyboard.add(
-        InlineKeyboardButton("📊 Мой статус", callback_data="status"),
-        InlineKeyboardButton("🔗 Получить ссылку", callback_data="get_link")
-    )
-    keyboard.add(
-        InlineKeyboardButton("🆘 Помощь", callback_data="help")
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎁 Пробный период", callback_data="trial"),
+            InlineKeyboardButton(text="💰 Купить VPN", callback_data="buy")
+        ],
+        [
+            InlineKeyboardButton(text="📊 Мой статус", callback_data="status"),
+            InlineKeyboardButton(text="🔗 Получить ссылку", callback_data="get_link")
+        ],
+        [
+            InlineKeyboardButton(text="🆘 Помощь", callback_data="help")
+        ]
+    ])
     return keyboard
 
 def buy_menu():
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton("📅 1 месяц - 500₽", callback_data="pay_30"),
-        InlineKeyboardButton("📅 3 месяца - 1200₽", callback_data="pay_90")
-    )
-    keyboard.add(
-        InlineKeyboardButton("📅 6 месяцев - 2000₽", callback_data="pay_180"),
-        InlineKeyboardButton("📅 1 год - 3500₽", callback_data="pay_365")
-    )
-    keyboard.add(InlineKeyboardButton("◀️ Назад", callback_data="back"))
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📅 1 месяц - 500₽", callback_data="pay_30"),
+            InlineKeyboardButton(text="📅 3 месяца - 1200₽", callback_data="pay_90")
+        ],
+        [
+            InlineKeyboardButton(text="📅 6 месяцев - 2000₽", callback_data="pay_180"),
+            InlineKeyboardButton(text="📅 1 год - 3500₽", callback_data="pay_365")
+        ],
+        [
+            InlineKeyboardButton(text="◀️ Назад", callback_data="back")
+        ]
+    ])
     return keyboard
 
 @dp.message(Command("start"))
