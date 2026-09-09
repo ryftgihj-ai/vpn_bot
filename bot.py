@@ -14,44 +14,58 @@ from config import (
 )
 from database import Database
 
+# ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 # ===== ИНИЦИАЛИЗАЦИЯ =====
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 db = Database()
-logging.basicConfig(level=logging.INFO)
 
 # ===== ФУНКЦИЯ СОЗДАНИЯ КЛЮЧА =====
 async def create_vpn_key(user_id):
     try:
-        # ОТКЛЮЧАЕМ ПРОВЕРКУ SSL
         connector = aiohttp.TCPConnector(ssl=False)
         async with aiohttp.ClientSession(connector=connector) as session:
             headers = {"Authorization": f"Bearer {XRAY_API_TOKEN}"}
             
+            logger.info(f"📡 Запрос к X-UI API для user_id={user_id}")
+            
             # Получаем список инбаундов
             async with session.get(f"{XRAY_API}/list", headers=headers) as resp:
+                logger.info(f"📥 Ответ /list: status={resp.status}")
                 if resp.status != 200:
-                    logging.error(f"Ошибка API: {resp.status}")
+                    logger.error(f"❌ Ошибка /list: {resp.status}")
                     return None
                 data = await resp.json()
+                logger.info(f"📄 Данные /list: success={data.get('success')}")
                 if not data.get('success'):
+                    logger.error(f"❌ X-UI вернул ошибку: {data}")
                     return None
                 inbounds = data.get('obj', [])
                 if not inbounds:
+                    logger.error("❌ Нет входящих подключений")
                     return None
                 
                 inbound_id = inbounds[0].get('id')
                 inbound_port = inbounds[0].get('port')
                 inbound_protocol = inbounds[0].get('protocol')
+                logger.info(f"✅ Используем inbound: id={inbound_id}, port={inbound_port}, protocol={inbound_protocol}")
             
             # Создаём клиента
             client_id = f"user_{user_id}_{int(datetime.now().timestamp())}"
+            email = f"user_{user_id}@vpn.com"
+            
             client_data = {
                 "id": inbound_id,
                 "settings": json.dumps({
                     "clients": [{
                         "id": client_id,
-                        "email": f"user_{user_id}@vpn.com",
+                        "email": email,
                         "limitIp": 2,
                         "totalGB": 0,
                         "expiryTime": 0,
@@ -60,11 +74,18 @@ async def create_vpn_key(user_id):
                 })
             }
             
+            logger.info(f"📤 Создаём клиента: email={email}, id={client_id}")
+            
             async with session.post(f"{XRAY_API}/addClient", headers=headers, json=client_data) as resp:
+                logger.info(f"📥 Ответ /addClient: status={resp.status}")
                 if resp.status != 200:
+                    logger.error(f"❌ Ошибка /addClient: {resp.status}")
                     return None
                 result = await resp.json()
+                logger.info(f"📄 Ответ X-UI: {json.dumps(result, indent=2)}")
+                
                 if not result.get('success'):
+                    logger.error(f"❌ X-UI не создал клиента: {result}")
                     return None
             
             # Формируем ссылку
@@ -74,9 +95,11 @@ async def create_vpn_key(user_id):
                 link = f"Ссылка для {inbound_protocol} пока не настроена"
             
             db.save_vpn_link(user_id, link)
+            logger.info(f"✅ VPN-ссылка создана для user_id={user_id}")
             return link
+                
     except Exception as e:
-        logging.error(f"Ошибка создания ключа: {e}")
+        logger.error(f"❌ Исключение в create_vpn_key: {e}")
         return None
 
 # ===== КЛАВИАТУРЫ =====
@@ -263,7 +286,7 @@ async def back_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 async def main():
-    print("🚀 Бот запущен!")
+    logger.info("🚀 Бот запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
