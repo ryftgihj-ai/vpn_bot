@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
@@ -23,12 +23,15 @@ logging.basicConfig(level=logging.INFO)
 # ===== ФУНКЦИЯ СОЗДАНИЯ КЛЮЧА =====
 async def create_vpn_key(user_id):
     try:
-        async with aiohttp.ClientSession() as session:
+        # ОТКЛЮЧАЕМ ПРОВЕРКУ SSL
+        connector = aiohttp.TCPConnector(ssl=False)
+        async with aiohttp.ClientSession(connector=connector) as session:
             headers = {"Authorization": f"Bearer {XRAY_API_TOKEN}"}
             
             # Получаем список инбаундов
             async with session.get(f"{XRAY_API}/list", headers=headers) as resp:
                 if resp.status != 200:
+                    logging.error(f"Ошибка API: {resp.status}")
                     return None
                 data = await resp.json()
                 if not data.get('success'):
@@ -109,7 +112,7 @@ def buy_menu():
     ])
     return keyboard
 
-# ===== ОБРАБОТЧИКИ КОМАНД =====
+# ===== КОМАНДЫ =====
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
     user_id = message.from_user.id
@@ -186,6 +189,7 @@ async def get_link_callback(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "buy")
 async def buy_callback(callback: types.CallbackQuery):
+    await callback.message.delete()
     await callback.message.answer_photo(
         photo=PHOTO_BUY,
         caption="💳 Выбери тариф:",
@@ -197,20 +201,19 @@ async def buy_callback(callback: types.CallbackQuery):
 async def payment_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     days = int(callback.data.split("_")[1])
-    price = PRICES.get(str(days), 0)
     
-    # ВРЕМЕННО: бесплатная активация для теста
     end_date = db.activate_subscription(user_id, days)
     link = await create_vpn_key(user_id)
     
     if link:
-        await callback.message.edit_text(
+        await callback.message.delete()
+        await callback.message.answer(
             f"✅ Подписка активирована!\n📅 Действует до: {end_date.strftime('%d.%m.%Y')}\n\n🔗 Твоя ссылка:\n`{link}`\n\n📱 Импортируй в клиент",
             parse_mode="Markdown",
             reply_markup=main_menu()
         )
     else:
-        await callback.message.edit_text(f"❌ Ошибка. Напишите {SUPPORT_LINK}")
+        await callback.message.answer(f"❌ Ошибка. Напишите {SUPPORT_LINK}")
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "status")
@@ -227,7 +230,8 @@ async def status_callback(callback: types.CallbackQuery):
         status_text += f"❌ Подписка: НЕАКТИВНА\n{msg}\n\n"
     status_text += f"🎁 Пробный период: {trial_used}"
     
-    await callback.message.edit_text(
+    await callback.message.delete()
+    await callback.message.answer(
         status_text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
@@ -241,6 +245,7 @@ async def help_callback(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="📄 Открыть инструкцию", url=HELP_URL)],
         [InlineKeyboardButton(text="📞 Написать поддержке", url=SUPPORT_LINK)]
     ])
+    await callback.message.delete()
     await callback.message.answer_photo(
         photo=PHOTO_SUPPORT,
         caption="📖 Инструкция и поддержка:",
@@ -250,7 +255,11 @@ async def help_callback(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "back")
 async def back_callback(callback: types.CallbackQuery):
-    await callback.message.edit_text("Главное меню:", reply_markup=main_menu())
+    await callback.message.delete()
+    await callback.message.answer(
+        "Главное меню:",
+        reply_markup=main_menu()
+    )
     await callback.answer()
 
 async def main():
