@@ -52,8 +52,16 @@ async def create_vpn_key(user_id):
                     logger.error("❌ Нет входящих подключений")
                     return None
                 
-                # Берём первый inbound
-                inbound = inbounds[0]
+                # ===== ВЫБИРАЕМ КОНКРЕТНЫЙ ИНБАУНД =====
+                # ID твоего инбаунда "in-442-tcp" = 1
+                TARGET_INBOUND_ID = 1
+                inbound = next((x for x in inbounds if x.get('id') == TARGET_INBOUND_ID), None)
+                
+                if not inbound:
+                    logger.error(f"❌ Инбаунд с ID={TARGET_INBOUND_ID} не найден!")
+                    logger.info(f"📋 Доступные инбаунды: {[x.get('id') for x in inbounds]}")
+                    return None
+                
                 inbound_id = inbound.get('id')
                 inbound_port = inbound.get('port')
                 inbound_protocol = inbound.get('protocol')
@@ -108,7 +116,6 @@ async def create_vpn_key(user_id):
             
             # ===== ФОРМИРУЕМ ПРАВИЛЬНУЮ ССЫЛКУ =====
             if inbound_protocol == "vless":
-                # Формируем VLESS ссылку с параметрами из inbound
                 link = f"vless://{client_uuid}@{SERVER_IP}:{inbound_port}?security={security}&encryption=none&type={network}&flow=xtls-rprx-vision&sni={sni}#{inbound_remark}"
             else:
                 link = f"Ссылка для {inbound_protocol} пока не настроена"
@@ -143,10 +150,10 @@ def buy_menu():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📅 1 месяц - 120₽", callback_data="pay_30"),
-            InlineKeyboardButton(text="📅 3 meses - 350₽", callback_data="pay_90")
+            InlineKeyboardButton(text="📅 3 месяца - 350₽", callback_data="pay_90")
         ],
         [
-            InlineKeyboardButton(text="📅 6 meses - 1000₽", callback_data="pay_180"),
+            InlineKeyboardButton(text="📅 6 месяцев - 1000₽", callback_data="pay_180"),
             InlineKeyboardButton(text="📅 1 год - 2000₽", callback_data="pay_365")
         ],
         [
