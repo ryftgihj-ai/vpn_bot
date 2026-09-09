@@ -3,7 +3,7 @@ BOT_TOKEN = "8997532043:AAEcTl6VKnS4Rtg3LyrDkfBFvqSzXqnVTLI"
 ADMIN_ID = 5633209888
 
 # ===== НАСТРОЙКИ X-UI =====
-XRAY_API = "http://135.106.185.216:49531/panel/api/inbounds"
+XRAY_API = "https://135.106.185.216:49531/fpZmUwDOByXzyFFbvO/panel/api/inbounds"
 XRAY_API_TOKEN = "Yo4lmswupTdn6QZvy03tdD0IpCOFJRMExpAmGvKo1ok7CnU4"
 SERVER_IP = "135.106.185.216"
 
