@@ -6,6 +6,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 import aiohttp
 import json
+import uuid
 
 from config import (
     BOT_TOKEN, ADMIN_ID, XRAY_API, XRAY_API_TOKEN, SERVER_IP,
@@ -51,22 +52,37 @@ async def create_vpn_key(user_id):
                     logger.error("❌ Нет входящих подключений")
                     return None
                 
-                inbound_id = inbounds[0].get('id')
-                inbound_port = inbounds[0].get('port')
-                inbound_protocol = inbounds[0].get('protocol')
+                # Берём первый inbound
+                inbound = inbounds[0]
+                inbound_id = inbound.get('id')
+                inbound_port = inbound.get('port')
+                inbound_protocol = inbound.get('protocol')
+                inbound_remark = inbound.get('remark', 'VPN')
+                
+                # Получаем настройки безопасности
+                stream_settings = inbound.get('streamSettings', {})
+                security = stream_settings.get('security', 'none')
+                network = stream_settings.get('network', 'tcp')
+                
+                # Получаем sni из realitySettings
+                sni = "www.microsoft.com"  # Значение по умолчанию
+                if security == "reality":
+                    reality_settings = stream_settings.get('realitySettings', {})
+                    sni = reality_settings.get('serverNames', ['www.microsoft.com'])[0] if reality_settings.get('serverNames') else "www.microsoft.com"
+                
                 logger.info(f"✅ Используем inbound: id={inbound_id}, port={inbound_port}, protocol={inbound_protocol}")
+                logger.info(f"   security={security}, network={network}, sni={sni}")
             
-            # Создаём клиента
-            client_id = f"user_{user_id}_{int(datetime.now().timestamp())}"
+            # Создаём клиента с UUID
+            client_uuid = str(uuid.uuid4())
             email = f"user_{user_id}@vpn.com"
             
-            # ===== ИСПРАВЛЕННЫЙ ЗАПРОС: ДОБАВЛЕН PROTOCOL =====
             client_data = {
                 "id": inbound_id,
                 "protocol": inbound_protocol,
                 "settings": json.dumps({
                     "clients": [{
-                        "id": client_id,
+                        "id": client_uuid,
                         "email": email,
                         "limitIp": 2,
                         "totalGB": 0,
@@ -76,17 +92,12 @@ async def create_vpn_key(user_id):
                 })
             }
             
-            logger.info(f"📤 Создаём клиента: email={email}, id={client_id}")
+            logger.info(f"📤 Создаём клиента: email={email}, uuid={client_uuid}")
             
             async with session.post(f"{XRAY_API}/add", headers=headers, json=client_data) as resp:
                 logger.info(f"📥 Ответ /add: status={resp.status}")
                 if resp.status != 200:
                     logger.error(f"❌ Ошибка /add: {resp.status}")
-                    try:
-                        error_body = await resp.text()
-                        logger.error(f"📄 Тело ошибки: {error_body}")
-                    except:
-                        pass
                     return None
                 result = await resp.json()
                 logger.info(f"📄 Ответ X-UI: {json.dumps(result, indent=2)}")
@@ -95,14 +106,16 @@ async def create_vpn_key(user_id):
                     logger.error(f"❌ X-UI не создал клиента: {result}")
                     return None
             
-            # Формируем ссылку
+            # ===== ФОРМИРУЕМ ПРАВИЛЬНУЮ ССЫЛКУ =====
             if inbound_protocol == "vless":
-                link = f"vless://{client_id}@{SERVER_IP}:{inbound_port}?security=reality&encryption=none&type=tcp&flow=xtls-rprx-vision&sni=www.microsoft.com#VPN_BOT"
+                # Формируем VLESS ссылку с параметрами из inbound
+                link = f"vless://{client_uuid}@{SERVER_IP}:{inbound_port}?security={security}&encryption=none&type={network}&flow=xtls-rprx-vision&sni={sni}#{inbound_remark}"
             else:
                 link = f"Ссылка для {inbound_protocol} пока не настроена"
             
             db.save_vpn_link(user_id, link)
             logger.info(f"✅ VPN-ссылка создана для user_id={user_id}")
+            logger.info(f"🔗 Ссылка: {link}")
             return link
                 
     except Exception as e:
@@ -130,10 +143,10 @@ def buy_menu():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📅 1 месяц - 120₽", callback_data="pay_30"),
-            InlineKeyboardButton(text="📅 3 месяца - 350₽", callback_data="pay_90")
+            InlineKeyboardButton(text="📅 3 meses - 350₽", callback_data="pay_90")
         ],
         [
-            InlineKeyboardButton(text="📅 6 месяцев - 1000₽", callback_data="pay_180"),
+            InlineKeyboardButton(text="📅 6 meses - 1000₽", callback_data="pay_180"),
             InlineKeyboardButton(text="📅 1 год - 2000₽", callback_data="pay_365")
         ],
         [
