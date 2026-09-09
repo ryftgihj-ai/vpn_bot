@@ -1,50 +1,48 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 import aiohttp
 import json
 
-from config import BOT_TOKEN, ADMIN_ID, XRAY_API, XRAY_USERNAME, XRAY_PASSWORD, SERVER_IP
+from config import (
+    BOT_TOKEN, ADMIN_ID, XRAY_API, XRAY_API_TOKEN, SERVER_IP,
+    PHOTO_START, PHOTO_SUPPORT, PHOTO_TRIAL, PHOTO_BUY,
+    HELP_URL, SUPPORT_LINK, PRICES
+)
 from database import Database
 
+# ===== ИНИЦИАЛИЗАЦИЯ =====
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 db = Database()
-
 logging.basicConfig(level=logging.INFO)
 
+# ===== ФУНКЦИЯ СОЗДАНИЯ КЛЮЧА =====
 async def create_vpn_key(user_id):
     try:
         async with aiohttp.ClientSession() as session:
-            login_data = {
-                "username": XRAY_USERNAME,
-                "password": XRAY_PASSWORD
-            }
-            async with session.post(f"{XRAY_API}/login", json=login_data) as resp:
+            headers = {"Authorization": f"Bearer {XRAY_API_TOKEN}"}
+            
+            # Получаем список инбаундов
+            async with session.get(f"{XRAY_API}/list", headers=headers) as resp:
                 if resp.status != 200:
                     return None
-                token_data = await resp.json()
-                token = token_data.get('accessToken')
-                if not token:
-                    return None
-            
-            headers = {"Authorization": f"Bearer {token}"}
-            async with session.get(f"{XRAY_API}/list", headers=headers) as resp:
                 data = await resp.json()
                 if not data.get('success'):
                     return None
                 inbounds = data.get('obj', [])
                 if not inbounds:
                     return None
+                
                 inbound_id = inbounds[0].get('id')
                 inbound_port = inbounds[0].get('port')
                 inbound_protocol = inbounds[0].get('protocol')
             
+            # Создаём клиента
             client_id = f"user_{user_id}_{int(datetime.now().timestamp())}"
-            
             client_data = {
                 "id": inbound_id,
                 "settings": json.dumps({
@@ -59,17 +57,14 @@ async def create_vpn_key(user_id):
                 })
             }
             
-            async with session.post(
-                f"{XRAY_API}/addClient",
-                headers=headers,
-                json=client_data
-            ) as resp:
+            async with session.post(f"{XRAY_API}/addClient", headers=headers, json=client_data) as resp:
                 if resp.status != 200:
                     return None
                 result = await resp.json()
                 if not result.get('success'):
                     return None
             
+            # Формируем ссылку
             if inbound_protocol == "vless":
                 link = f"vless://{client_id}@{SERVER_IP}:{inbound_port}?security=reality&encryption=none&type=tcp&flow=xtls-rprx-vision&sni=www.microsoft.com#VPN_BOT"
             else:
@@ -77,11 +72,11 @@ async def create_vpn_key(user_id):
             
             db.save_vpn_link(user_id, link)
             return link
-                
     except Exception as e:
-        logging.error(f"Ошибка: {e}")
+        logging.error(f"Ошибка создания ключа: {e}")
         return None
 
+# ===== КЛАВИАТУРЫ =====
 def main_menu():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -101,12 +96,12 @@ def main_menu():
 def buy_menu():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="📅 1 месяц - 500₽", callback_data="pay_30"),
-            InlineKeyboardButton(text="📅 3 месяца - 1200₽", callback_data="pay_90")
+            InlineKeyboardButton(text="📅 1 месяц - 120₽", callback_data="pay_30"),
+            InlineKeyboardButton(text="📅 3 месяца - 350₽", callback_data="pay_90")
         ],
         [
-            InlineKeyboardButton(text="📅 6 месяцев - 2000₽", callback_data="pay_180"),
-            InlineKeyboardButton(text="📅 1 год - 3500₽", callback_data="pay_365")
+            InlineKeyboardButton(text="📅 6 месяцев - 1000₽", callback_data="pay_180"),
+            InlineKeyboardButton(text="📅 1 год - 2000₽", callback_data="pay_365")
         ],
         [
             InlineKeyboardButton(text="◀️ Назад", callback_data="back")
@@ -114,13 +109,16 @@ def buy_menu():
     ])
     return keyboard
 
+# ===== ОБРАБОТЧИКИ КОМАНД =====
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
     user_id = message.from_user.id
     username = message.from_user.username or "NoUsername"
     db.add_user(user_id, username)
-    await message.answer(
-        f"👋 Привет, {message.from_user.first_name}!\n\nЯ бот для выдачи VPN.\nВыбери действие:",
+    
+    await message.answer_photo(
+        photo=PHOTO_START,
+        caption="👋 Привет! Я бот для выдачи VPN.\nВыбери действие:",
         reply_markup=main_menu()
     )
 
@@ -134,53 +132,63 @@ async def admin_panel(message: types.Message):
         f"📊 Админ-панель\n\n👥 Всего: {total}\n✅ Активных: {active}\n❌ Неактивных: {total - active}"
     )
 
+# ===== ОБРАБОТЧИКИ CALLBACK =====
 @dp.callback_query(lambda c: c.data == "trial")
 async def trial_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     user = db.get_user(user_id)
+    
     if not user:
         await callback.message.answer("❌ Ошибка. Напишите /start")
         await callback.answer()
         return
+    
     if user[3] == 1:
         await callback.message.answer("❌ Вы уже использовали пробный период!")
         await callback.answer()
         return
+    
     db.activate_trial(user_id)
     link = await create_vpn_key(user_id)
+    
     if link:
-        await callback.message.answer(
-            f"✅ Пробный период на 3 дня активирован!\n\n🔗 Твоя ссылка:\n`{link}`\n\n📱 Скачай V2RayNG (Android) или Nekoray (PC) и импортируй эту ссылку.",
+        await callback.message.answer_photo(
+            photo=PHOTO_TRIAL,
+            caption=f"✅ Пробный период на 3 дня активирован!\n\n🔗 Твоя ссылка:\n`{link}`\n\n📱 Скачай клиент:\n• Android: https://play.google.com/store/apps/details?id=com.v2ray.ang\n• iPhone: https://apps.apple.com/app/v2raybox/id6446824604\n• Windows/Mac: https://github.com/MatsuriDayo/nekoray/releases",
             parse_mode="Markdown",
             reply_markup=main_menu()
         )
     else:
-        await callback.message.answer("❌ Ошибка. Напишите @admin")
+        await callback.message.answer(f"❌ Ошибка. Напишите {SUPPORT_LINK}")
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "get_link")
 async def get_link_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     is_active, msg = db.check_subscription(user_id)
+    
     if not is_active:
         await callback.message.answer(f"❌ {msg}\n\nКупи подписку или активируй пробный период.", reply_markup=main_menu())
         await callback.answer()
         return
+    
     user = db.get_user(user_id)
     link = user[4]
     if not link:
         link = await create_vpn_key(user_id)
         if not link:
-            await callback.message.answer("❌ Ошибка. Напишите @admin")
+            await callback.message.answer(f"❌ Ошибка. Напишите {SUPPORT_LINK}")
             await callback.answer()
             return
+    
     await callback.message.answer(f"✅ Твоя ссылка активна!\n\n🔗 `{link}`\n\n📊 {msg}", parse_mode="Markdown", reply_markup=main_menu())
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "buy")
 async def buy_callback(callback: types.CallbackQuery):
-    await callback.message.edit_text(
-        "💳 Выбери тариф:\n\n🔹 1 месяц — 500 ₽\n🔹 3 месяца — 1200 ₽\n🔹 6 месяцев — 2000 ₽\n🔹 1 год — 3500 ₽\n\n💳 Оплата: USDT (криптовалюта)",
+    await callback.message.answer_photo(
+        photo=PHOTO_BUY,
+        caption="💳 Выбери тариф:",
         reply_markup=buy_menu()
     )
     await callback.answer()
@@ -189,16 +197,20 @@ async def buy_callback(callback: types.CallbackQuery):
 async def payment_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     days = int(callback.data.split("_")[1])
+    price = PRICES.get(str(days), 0)
+    
+    # ВРЕМЕННО: бесплатная активация для теста
     end_date = db.activate_subscription(user_id, days)
     link = await create_vpn_key(user_id)
+    
     if link:
         await callback.message.edit_text(
-            f"✅ Подписка активирована!\n📅 Действует до: {end_date.strftime('%d.%m.%Y')}\n\n🔗 Твоя ссылка:\n`{link}`\n\n📱 Импортируй в клиент V2RayNG или Nekoray",
+            f"✅ Подписка активирована!\n📅 Действует до: {end_date.strftime('%d.%m.%Y')}\n\n🔗 Твоя ссылка:\n`{link}`\n\n📱 Импортируй в клиент",
             parse_mode="Markdown",
             reply_markup=main_menu()
         )
     else:
-        await callback.message.edit_text("❌ Ошибка. Напишите @admin")
+        await callback.message.edit_text(f"❌ Ошибка. Напишите {SUPPORT_LINK}")
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "status")
@@ -207,32 +219,38 @@ async def status_callback(callback: types.CallbackQuery):
     is_active, msg = db.check_subscription(user_id)
     user = db.get_user(user_id)
     trial_used = "✅" if user and user[3] == 1 else "❌"
+    
     status_text = f"📊 Твой статус:\n\n"
     if is_active:
         status_text += f"✅ Подписка: АКТИВНА\n{msg}\n\n"
     else:
         status_text += f"❌ Подписка: НЕАКТИВНА\n{msg}\n\n"
     status_text += f"🎁 Пробный период: {trial_used}"
+    
     await callback.message.edit_text(
         status_text,
-        reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("◀️ Назад", callback_data="back"))
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
+        ])
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "help")
+async def help_callback(callback: types.CallbackQuery):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📄 Открыть инструкцию", url=HELP_URL)],
+        [InlineKeyboardButton(text="📞 Написать поддержке", url=SUPPORT_LINK)]
+    ])
+    await callback.message.answer_photo(
+        photo=PHOTO_SUPPORT,
+        caption="📖 Инструкция и поддержка:",
+        reply_markup=keyboard
     )
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "back")
 async def back_callback(callback: types.CallbackQuery):
     await callback.message.edit_text("Главное меню:", reply_markup=main_menu())
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "help")
-async def help_callback(callback: types.CallbackQuery):
-    help_text = (
-        "🆘 Как подключиться:\n\n1️⃣ Скачай клиент:\n   📱 Android: V2RayNG (Play Market)\n   💻 Windows: Nekoray (GitHub)\n   🍎 iOS: Shadowrocket (App Store)\n\n2️⃣ Скопируй ссылку, которую я выдал\n\n3️⃣ В клиенте нажми 'Импорт из буфера обмена'\n\n4️⃣ Нажми 'Подключиться'\n\n❓ Вопросы: @admin"
-    )
-    await callback.message.edit_text(
-        help_text,
-        reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("◀️ Назад", callback_data="back"))
-    )
     await callback.answer()
 
 async def main():
