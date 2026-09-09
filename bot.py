@@ -60,8 +60,10 @@ async def create_vpn_key(user_id):
             client_id = f"user_{user_id}_{int(datetime.now().timestamp())}"
             email = f"user_{user_id}@vpn.com"
             
+            # ===== ИСПРАВЛЕННЫЙ ЗАПРОС: ДОБАВЛЕН PROTOCOL =====
             client_data = {
                 "id": inbound_id,
+                "protocol": inbound_protocol,
                 "settings": json.dumps({
                     "clients": [{
                         "id": client_id,
@@ -76,12 +78,10 @@ async def create_vpn_key(user_id):
             
             logger.info(f"📤 Создаём клиента: email={email}, id={client_id}")
             
-            # ===== ИСПРАВЛЕННЫЙ ЭНДПОИНТ: /add =====
             async with session.post(f"{XRAY_API}/add", headers=headers, json=client_data) as resp:
                 logger.info(f"📥 Ответ /add: status={resp.status}")
                 if resp.status != 200:
                     logger.error(f"❌ Ошибка /add: {resp.status}")
-                    # Пробуем прочитать тело ошибки
                     try:
                         error_body = await resp.text()
                         logger.error(f"📄 Тело ошибки: {error_body}")
