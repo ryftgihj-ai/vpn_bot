@@ -17,6 +17,10 @@ PHOTO_BUY = "AgACAgIAAxkBAAEujs1qoUyw5eYAATbPVmSSLQWYs7LUJEsAAqQfaxvGpBBJTL4yGIq
 HELP_URL = "https://telegra.ph/Instrukciya-po-podklyucheniyu-k-VPN-09-09"
 SUPPORT_LINK = "https://t.me/pepsi_water"
 
+# ===== НАСТРОЙКИ КАНАЛА =====
+CHANNEL_ID = "-1001234567890"  # <-- ЗАМЕНИ НА СВОЙ ID
+CHANNEL_LINK = "https://t.me/твой_канал"  # <-- ЗАМЕНИ НА СВОЮ ССЫЛКУ
+
 # ===== ЦЕНЫ =====
 PRICES = {
     "30": 120,
