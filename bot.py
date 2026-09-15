@@ -176,9 +176,8 @@ async def start_command(message: types.Message):
         return
     
     db.add_user(user_id, username)
-    await message.answer_photo(
-        photo=PHOTO_START,
-        caption="👋 Привет! Я бот для выдачи VPN.\nВыбери действие:",
+    await message.answer(
+        "👋 Привет! Я бот для выдачи VPN.\nВыбери действие:",
         reply_markup=main_menu()
     )
 
@@ -202,9 +201,8 @@ async def check_sub_callback(callback: types.CallbackQuery):
         username = callback.from_user.username or "NoUsername"
         db.add_user(user_id, username)
         await callback.message.delete()
-        await callback.message.answer_photo(
-            photo=PHOTO_START,
-            caption="✅ Спасибо за подписку!\n\n👋 Привет! Я бот для выдачи VPN.\nВыбери действие:",
+        await callback.message.answer(
+            "✅ Спасибо за подписку!\n\n👋 Привет! Я бот для выдачи VPN.\nВыбери действие:",
             reply_markup=main_menu()
         )
     else:
@@ -236,9 +234,8 @@ async def trial_callback(callback: types.CallbackQuery):
     link = await create_vpn_key(user_id)
     
     if link:
-        await callback.message.answer_photo(
-            photo=PHOTO_TRIAL,
-            caption=f"✅ Пробный период на 3 дня активирован!\n\n🔗 Твоя ссылка:\n`{link}`\n\n📱 Скачай клиент:\n• Android: https://play.google.com/store/apps/details?id=com.v2ray.ang\n• iPhone: https://apps.apple.com/app/v2raybox/id6446824604\n• Windows/Mac: https://github.com/MatsuriDayo/nekoray/releases",
+        await callback.message.answer(
+            f"✅ Пробный период на 3 дня активирован!\n\n🔗 Твоя ссылка:\n`{link}`\n\n📱 Скачай клиент:\n• Android: https://play.google.com/store/apps/details?id=com.v2ray.ang\n• iPhone: https://apps.apple.com/app/v2raybox/id6446824604\n• Windows/Mac: https://github.com/MatsuriDayo/nekoray/releases",
             parse_mode="Markdown",
             reply_markup=main_menu()
         )
@@ -284,9 +281,8 @@ async def buy_callback(callback: types.CallbackQuery):
         return
     
     await callback.message.delete()
-    await callback.message.answer_photo(
-        photo=PHOTO_BUY,
-        caption="💳 Выбери тариф:",
+    await callback.message.answer(
+        "💳 Выбери тариф:",
         reply_markup=buy_menu()
     )
     await callback.answer()
@@ -340,9 +336,8 @@ async def help_callback(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="📞 Написать поддержке", url=SUPPORT_LINK)]
     ])
     await callback.message.delete()
-    await callback.message.answer_photo(
-        photo=PHOTO_SUPPORT,
-        caption="📖 Инструкция и поддержка:",
+    await callback.message.answer(
+        "📖 Инструкция и поддержка:",
         reply_markup=keyboard
     )
     await callback.answer()
