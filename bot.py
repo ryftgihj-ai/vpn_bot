@@ -28,6 +28,9 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 db = Database()
 
+# ===== БАЗОВЫЙ URL БЕЗ /panel/api/inbounds =====
+BASE_URL = XRAY_API.replace("/panel/api/inbounds", "")
+
 # ===== ФУНКЦИЯ ПРОВЕРКИ ПОДПИСКИ =====
 async def check_subscription(user_id):
     try:
@@ -46,6 +49,7 @@ async def create_vpn_key(user_id):
             
             logger.info(f"📡 Запрос к X-UI API для user_id={user_id}")
             
+            # Получаем список инбаундов
             async with session.get(f"{XRAY_API}/list", headers=headers) as resp:
                 if resp.status != 200:
                     logger.error(f"❌ Ошибка /list: {resp.status}")
@@ -59,6 +63,7 @@ async def create_vpn_key(user_id):
                     logger.error("❌ Нет входящих подключений")
                     return None
                 
+                # Находим нужный инбаунд
                 inbound = next((x for x in inbounds if x.get('id') == TARGET_INBOUND_ID), None)
                 
                 if not inbound:
@@ -83,40 +88,58 @@ async def create_vpn_key(user_id):
                 
                 logger.info(f"✅ Используем inbound: id={inbound_id}, port={inbound_port}, security={security}")
             
-            client_uuid = str(uuid.uuid4())
+            # ===== НОВЫЙ ФОРМАТ ЗАПРОСА ДЛЯ /clients/add =====
             email = f"user_{user_id}_{int(datetime.now().timestamp())}@vpn.com"
             
             client_data = {
-                "id": inbound_id,
-                "settings": json.dumps({
-                    "clients": [{
-                        "id": client_uuid,
-                        "email": email,
-                        "limitIp": 2,
-                        "totalGB": 0,
-                        "expiryTime": 0,
-                        "enable": True
-                    }]
-                })
+                "client": {
+                    "email": email,
+                    "totalGB": 0,
+                    "expiryTime": 0,
+                    "limitIp": 2,
+                    "enable": True
+                },
+                "inboundIds": [inbound_id]
             }
             
-            logger.info(f"📤 Создаём клиента: email={email}, inbound_id={inbound_id}")
+            logger.info(f"📤 Создаём клиента: email={email}, inboundIds={[inbound_id]}")
             
-            async with session.post(f"{XRAY_API}/addClient", headers=headers, json=client_data) as resp:
+            # ===== ИСПОЛЬЗУЕМ ПРАВИЛЬНЫЙ ЭНДПОИНТ /clients/add =====
+            add_url = f"{BASE_URL}/panel/api/clients/add"
+            logger.info(f"🌐 URL: {add_url}")
+            
+            async with session.post(add_url, headers=headers, json=client_data) as resp:
+                logger.info(f"📥 Ответ /clients/add: status={resp.status}")
                 if resp.status != 200:
-                    logger.error(f"❌ Ошибка /addClient: {resp.status}")
+                    error_text = await resp.text()
+                    logger.error(f"❌ Ошибка /clients/add: {resp.status} — {error_text}")
                     return None
                 result = await resp.json()
-                logger.info(f"📄 Ответ: {json.dumps(result, indent=2)}")
+                logger.info(f"📄 Ответ X-UI: {json.dumps(result, indent=2)}")
                 
                 if not result.get('success'):
                     logger.error(f"❌ X-UI не создал клиента: {result}")
                     return None
             
+            # ===== ПОЛУЧАЕМ UUID СОЗДАННОГО КЛИЕНТА =====
+            get_url = f"{BASE_URL}/panel/api/clients/get/{email}"
+            async with session.get(get_url, headers=headers) as resp:
+                if resp.status == 200:
+                    client_info = await resp.json()
+                    obj = client_info.get('obj', {})
+                    # Пробуем разные варианты расположения uuid
+                    client_uuid = obj.get('uuid') or obj.get('client', {}).get('id') or str(uuid.uuid4())
+                    logger.info(f"🔑 UUID клиента: {client_uuid}")
+                else:
+                    logger.warning(f"⚠️ Не удалось получить UUID, генерируем свой")
+                    client_uuid = str(uuid.uuid4())
+            
+            # Формируем ссылку
             link = f"vless://{client_uuid}@{SERVER_IP}:{inbound_port}?security={security}&encryption=none&type={network}&flow=xtls-rprx-vision&sni={sni}#{inbound_remark}"
             
             db.save_vpn_link(user_id, link)
             logger.info(f"✅ VPN-ссылка создана для user_id={user_id}")
+            logger.info(f"🔗 Ссылка: {link}")
             return link
                 
     except Exception as e:
@@ -200,7 +223,10 @@ async def check_sub_callback(callback: types.CallbackQuery):
     if is_subscribed:
         username = callback.from_user.username or "NoUsername"
         db.add_user(user_id, username)
-        await callback.message.delete()
+        try:
+            await callback.message.delete()
+        except:
+            pass
         await callback.message.answer(
             "✅ Спасибо за подписку!\n\n👋 Привет! Я бот для выдачи VPN.\nВыбери действие:",
             reply_markup=main_menu()
@@ -280,7 +306,10 @@ async def buy_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Подпишитесь на канал!", show_alert=True)
         return
     
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except:
+        pass
     await callback.message.answer(
         "💳 Выбери тариф:",
         reply_markup=buy_menu()
@@ -296,7 +325,10 @@ async def payment_callback(callback: types.CallbackQuery):
     link = await create_vpn_key(user_id)
     
     if link:
-        await callback.message.delete()
+        try:
+            await callback.message.delete()
+        except:
+            pass
         await callback.message.answer(
             f"✅ Подписка активирована!\n📅 Действует до: {end_date.strftime('%d.%m.%Y')}\n\n🔗 Твоя ссылка:\n`{link}`\n\n📱 Импортируй в клиент",
             parse_mode="Markdown",
@@ -320,7 +352,10 @@ async def status_callback(callback: types.CallbackQuery):
         status_text += f"❌ Подписка: НЕАКТИВНА\n{msg}\n\n"
     status_text += f"🎁 Пробный период: {trial_used}"
     
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except:
+        pass
     await callback.message.answer(
         status_text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -335,7 +370,10 @@ async def help_callback(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="📄 Открыть инструкцию", url=HELP_URL)],
         [InlineKeyboardButton(text="📞 Написать поддержке", url=SUPPORT_LINK)]
     ])
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except:
+        pass
     await callback.message.answer(
         "📖 Инструкция и поддержка:",
         reply_markup=keyboard
@@ -344,7 +382,10 @@ async def help_callback(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "back")
 async def back_callback(callback: types.CallbackQuery):
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except:
+        pass
     await callback.message.answer(
         "Главное меню:",
         reply_markup=main_menu()
