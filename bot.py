@@ -351,9 +351,22 @@ async def back_callback(callback: types.CallbackQuery):
     )
     await callback.answer()
 
+# ===== ЗАПУСК С SINGLETON-ЗАЩИТОЙ =====
 async def main():
     logger.info("🚀 Бот запущен!")
-    await dp.start_polling(bot)
+    
+    # Удаляем вебхук и сбрасываем старые обновления
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("✅ Вебхук удалён, старые обновления сброшены")
+    except Exception as e:
+        logger.error(f"Ошибка удаления вебхука: {e}")
+    
+    # Ждём 3 секунды, чтобы старый экземпляр завершился
+    await asyncio.sleep(3)
+    logger.info("⏳ Начинаем polling...")
+    
+    await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
