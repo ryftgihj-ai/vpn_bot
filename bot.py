@@ -11,7 +11,8 @@ import uuid
 from config import (
     BOT_TOKEN, ADMIN_ID, XRAY_API, XRAY_API_TOKEN, SERVER_IP,
     PHOTO_START, PHOTO_SUPPORT, PHOTO_TRIAL, PHOTO_BUY,
-    HELP_URL, SUPPORT_LINK, PRICES, CHANNEL_ID, CHANNEL_LINK
+    HELP_URL, SUPPORT_LINK, PRICES, CHANNEL_ID, CHANNEL_LINK,
+    TARGET_INBOUND_ID
 )
 from database import Database
 
@@ -58,7 +59,6 @@ async def create_vpn_key(user_id):
                     logger.error("❌ Нет входящих подключений")
                     return None
                 
-                TARGET_INBOUND_ID = 1
                 inbound = next((x for x in inbounds if x.get('id') == TARGET_INBOUND_ID), None)
                 
                 if not inbound:
@@ -77,9 +77,11 @@ async def create_vpn_key(user_id):
                 sni = "www.microsoft.com"
                 if security == "reality":
                     reality_settings = stream_settings.get('realitySettings', {})
-                    sni = reality_settings.get('serverNames', ['www.microsoft.com'])[0] if reality_settings.get('serverNames') else "www.microsoft.com"
+                    server_names = reality_settings.get('serverNames', [])
+                    if server_names:
+                        sni = server_names[0]
                 
-                logger.info(f"✅ Используем inbound: id={inbound_id}, port={inbound_port}")
+                logger.info(f"✅ Используем inbound: id={inbound_id}, port={inbound_port}, security={security}")
             
             client_uuid = str(uuid.uuid4())
             email = f"user_{user_id}_{int(datetime.now().timestamp())}@vpn.com"
