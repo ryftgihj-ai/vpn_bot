@@ -1,5 +1,5 @@
 # ===== НАСТРОЙКИ БОТА =====
-BOT_TOKEN = "8997532043:AAEcTl6VKnS4Rtg3LyrDkfBFvqSzXqnVTLI"
+BOT_TOKEN = "8607797543:AAE6VyWDuqGvVeiIk3UY0jZktWgics5jZh8"
 ADMIN_ID = 5633209888
 
 # ===== НАСТРОЙКИ X-UI =====
