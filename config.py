@@ -3,9 +3,12 @@ BOT_TOKEN = "8997532043:AAEcTl6VKnS4Rtg3LyrDkfBFvqSzXqnVTLI"
 ADMIN_ID = 5633209888
 
 # ===== НАСТРОЙКИ X-UI =====
-XRAY_API = "https://135.106.185.216:49531/fpZmUwDOByXzyFFbvO/panel/api/inbounds"
-XRAY_API_TOKEN = "Yo4lmswupTdn6QZvy03tdD0IpCOFJRMExpAmGvKo1ok7CnU4"
-SERVER_IP = "135.106.185.216"
+XRAY_API = "https://138.124.101.84:3249/rDdQAQ6wnQYTnQgRGV/panel/api/inbounds"
+XRAY_API_TOKEN = "fxNaoMF5oAw4jNuZO5Tmfydnw4sGV8WzdR6thhohWnL089PX"
+SERVER_IP = "138.124.101.84"
+
+# ===== ID ИНБАУНДА =====
+TARGET_INBOUND_ID = 1
 
 # ===== ID ФОТО =====
 PHOTO_START = "AgACAgIAAxkBAAEujr9qoUwQEoZWPHyIlC3LLOTVk3-vEQACmh9rG8akEEkuWDy4F5kCCgEAAwIAA3MAAz0E"
