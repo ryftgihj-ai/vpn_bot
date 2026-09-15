@@ -63,7 +63,6 @@ async def create_vpn_key(user_id):
                     logger.error("❌ Нет входящих подключений")
                     return None
                 
-                # Находим нужный инбаунд
                 inbound = next((x for x in inbounds if x.get('id') == TARGET_INBOUND_ID), None)
                 
                 if not inbound:
@@ -71,24 +70,9 @@ async def create_vpn_key(user_id):
                     return None
                 
                 inbound_id = inbound.get('id')
-                inbound_port = inbound.get('port')
-                inbound_protocol = inbound.get('protocol')
-                inbound_remark = inbound.get('remark', 'VPN')
-                
-                stream_settings = inbound.get('streamSettings', {})
-                security = stream_settings.get('security', 'none')
-                network = stream_settings.get('network', 'tcp')
-                
-                sni = "www.microsoft.com"
-                if security == "reality":
-                    reality_settings = stream_settings.get('realitySettings', {})
-                    server_names = reality_settings.get('serverNames', [])
-                    if server_names:
-                        sni = server_names[0]
-                
-                logger.info(f"✅ Используем inbound: id={inbound_id}, port={inbound_port}, security={security}")
+                logger.info(f"✅ Используем inbound: id={inbound_id}")
             
-            # ===== НОВЫЙ ФОРМАТ ЗАПРОСА ДЛЯ /clients/add =====
+            # ===== СОЗДАЁМ КЛИЕНТА =====
             email = f"user_{user_id}_{int(datetime.now().timestamp())}@vpn.com"
             
             client_data = {
@@ -102,11 +86,9 @@ async def create_vpn_key(user_id):
                 "inboundIds": [inbound_id]
             }
             
-            logger.info(f"📤 Создаём клиента: email={email}, inboundIds={[inbound_id]}")
+            logger.info(f"📤 Создаём клиента: email={email}")
             
-            # ===== ИСПОЛЬЗУЕМ ПРАВИЛЬНЫЙ ЭНДПОИНТ /clients/add =====
             add_url = f"{BASE_URL}/panel/api/clients/add"
-            logger.info(f"🌐 URL: {add_url}")
             
             async with session.post(add_url, headers=headers, json=client_data) as resp:
                 logger.info(f"📥 Ответ /clients/add: status={resp.status}")
@@ -121,26 +103,41 @@ async def create_vpn_key(user_id):
                     logger.error(f"❌ X-UI не создал клиента: {result}")
                     return None
             
-            # ===== ПОЛУЧАЕМ UUID СОЗДАННОГО КЛИЕНТА =====
-            get_url = f"{BASE_URL}/panel/api/clients/get/{email}"
-            async with session.get(get_url, headers=headers) as resp:
+            # ===== ПОЛУЧАЕМ ГОТОВУЮ ССЫЛКУ ОТ X-UI =====
+            links_url = f"{BASE_URL}/panel/api/clients/links/{email}"
+            logger.info(f"🔗 Запрашиваем ссылку: {links_url}")
+            
+            async with session.get(links_url, headers=headers) as resp:
+                logger.info(f"📥 Ответ /clients/links: status={resp.status}")
                 if resp.status == 200:
-                    client_info = await resp.json()
-                    obj = client_info.get('obj', {})
-                    # Пробуем разные варианты расположения uuid
-                    client_uuid = obj.get('uuid') or obj.get('client', {}).get('id') or str(uuid.uuid4())
-                    logger.info(f"🔑 UUID клиента: {client_uuid}")
-                else:
-                    logger.warning(f"⚠️ Не удалось получить UUID, генерируем свой")
-                    client_uuid = str(uuid.uuid4())
-            
-            # Формируем ссылку
-            link = f"vless://{client_uuid}@{SERVER_IP}:{inbound_port}?security={security}&encryption=none&type={network}&flow=xtls-rprx-vision&sni={sni}#{inbound_remark}"
-            
-            db.save_vpn_link(user_id, link)
-            logger.info(f"✅ VPN-ссылка создана для user_id={user_id}")
-            logger.info(f"🔗 Ссылка: {link}")
-            return link
+                    links_data = await resp.json()
+                    logger.info(f"📄 Ссылки: {json.dumps(links_data, indent=2)}")
+                    
+                    if links_data.get('success'):
+                        links = links_data.get('obj', [])
+                        if links and len(links) > 0:
+                            link = links[0]
+                            logger.info(f"✅ Получена готовая ссылка от X-UI: {link}")
+                            db.save_vpn_link(user_id, link)
+                            return link
+                
+                # Если не удалось — формируем вручную
+                logger.warning("⚠️ Не удалось получить ссылку от X-UI, формируем вручную")
+                
+                # Пробуем получить UUID
+                get_url = f"{BASE_URL}/panel/api/clients/get/{email}"
+                async with session.get(get_url, headers=headers) as resp2:
+                    if resp2.status == 200:
+                        client_info = await resp2.json()
+                        logger.info(f"📄 Инфо о клиенте: {json.dumps(client_info, indent=2)}")
+                        obj = client_info.get('obj', {})
+                        client_uuid = obj.get('uuid') or obj.get('id') or str(uuid.uuid4())
+                    else:
+                        client_uuid = str(uuid.uuid4())
+                
+                link = f"vless://{client_uuid}@{SERVER_IP}:443?encryption=none&security=none&type=tcp#{email}"
+                db.save_vpn_link(user_id, link)
+                return link
                 
     except Exception as e:
         logger.error(f"❌ Исключение: {e}")
@@ -396,14 +393,12 @@ async def back_callback(callback: types.CallbackQuery):
 async def main():
     logger.info("🚀 Бот запущен!")
     
-    # Удаляем вебхук и сбрасываем старые обновления
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         logger.info("✅ Вебхук удалён, старые обновления сброшены")
     except Exception as e:
         logger.error(f"Ошибка удаления вебхука: {e}")
     
-    # Ждём 3 секунды, чтобы старый экземпляр завершился
     await asyncio.sleep(3)
     logger.info("⏳ Начинаем polling...")
     
